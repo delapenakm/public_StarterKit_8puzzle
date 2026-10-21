@@ -34,7 +34,8 @@ class BoardClass():
         self.Parent = None
 
         import math
-        self.Heuristic = math.inf
+        self.Heuristic = 0
+        self.Score = 0
 
 
     #=====================================================
@@ -51,48 +52,112 @@ class BoardClass():
         newBoard.X = self.X
         newBoard.Y = self.Y
         newBoard.Parent = self.Parent
-
-        newBoard.ManhattenDistance = self.ManhattenDistance
-
+        newBoard.Heuristic = self.Heuristic
+        newBoard.Score = self.Score
         return newBoard
 
     #=====================================================
-    def initializePuzzleBoard(self):
+    def isSolveable(self : BoardClass) -> int:
+        """Check if the current board is solveable (i.e. can be solved to reach the GOAL board)
+        """
+
+        # count number of inversions
+        inversions = 0
+        for row in range(0, BoardClass.N):
+            for col in range(0, BoardClass.N):
+                tile = self.Board[row][col]
+                if (tile != 0):  # don't count the empty tile
+                    for nextRow in range(row, BoardClass.N):
+                        startCol = col + 1 if (nextRow == row) else 0
+                        for nextCol in range(startCol, BoardClass.N):
+                            nextTile = self.Board[nextRow][nextCol]
+                            if (nextTile != 0):  # don't count the empty tile
+                                if (tile > nextTile):
+                                    inversions += 1
+                
+
+        #print("Inversions: ", inversions)
+
+        return (inversions % 2 == 0)
+    #=====================================================
+    def randomizeBoard(self):
+        """Randomly shuffle the board (and set the location of the empty tile)"""
+        import random
+
+        # create a list of all tiles (0-8)
+        allTiles = []
+        for row in range(0, BoardClass.N):
+            for col in range(0, BoardClass.N):
+                allTiles.append(self.Board[row][col])
+
+        # shuffle the list
+        random.shuffle(allTiles)
+
+        # put the shuffled tiles back into the board
+        for row in range(0, BoardClass.N):
+            for col in range(0, BoardClass.N):
+                self.Board[row][col] = allTiles.pop()
+                if (self.Board[row][col] == 0):
+                    self.X = row
+                    self.Y = col
+    #=====================================================
+    def calculateHeuristic(self, heuristicType : str) -> int:
+        """Calculate the heuristic value for the current board based on the specified heuristic type."""
+        if heuristicType == "Misplaced":
+            return self.getHeuristic_MisplacedTiles(BoardClass.GOAL)
+        elif heuristicType == "Manhattan":
+            return self.computeDistanceFromGoal()
+        else:
+            return 0 # Default case if heuristic type is not recognized
+    #=====================================================
+    def initializePuzzleBoard(self, heuristicType : str) -> int: 
         """Set actual (row,col) locations for each tile in the GOAL board
         and initialize the starting board"""
 
-        # set (row,col) locations for each tile in the GOAL
-        for row in range(0, BoardClass.N):
-            for col in range(0, BoardClass.N):
-                BoardClass.GoalTiles[ BoardClass.GOAL[row][col] ] = [row, col]
+        #Initialize the board to a random state (and set the location of the empty tile)
+        self.Board = [ [0, 1, 2], [3, 4, 5], [6, 7, 8] ]
 
-        """Starting board set up"""
-        # should be random when doing experiments (2do)
+        while True:
+            # set (row,col) locations for each tile in the GOAL
+            self.randomizeBoard()
 
-        #easy (4 moves)
-        self.Board = [ [3, 1, 2], [4, 7, 5], [6, 8, 0] ]
+            for row in range(0, BoardClass.N):
+                for col in range(0, BoardClass.N):
+                    BoardClass.GoalTiles[ BoardClass.GOAL[row][col] ] = [row, col]
 
-        # starting location of OPEN (0) tile
-        self.X = 2
-        self.Y = 2
+            """Starting board set up"""
+            # should be random when doing experiments (2do)
 
-        #medium
-        #self.Board = [ [3, 2, 5], [4, 1, 8], [6, 0, 7] ]
-        #self.X = 2
-        #self.Y = 1
-        # X and Y mean where is the blank tile
+            #easy (4 moves)
+            #self.Board = [ [3, 1, 2], [4, 7, 5], [6, 8, 0] ]
 
-        # hard
-        #self.Board = [ [1, 4, 5], [3, 0, 2], [6, 7, 8] ]
-        #self.X = 1
-        #self.Y = 1
+            # starting location of OPEN (0) tile
+            #self.X = 2
+            #self.Y = 2
 
-        assert ( self.Board[self.X][self.Y] == 0 )
+            #medium
+            #self.Board = [ [3, 2, 5], [4, 1, 8], [6, 0, 7] ]
+            #self.X = 2
+            #self.Y = 1
+            # X and Y mean where is the blank tile
 
-        self.computeDistanceFromGoal()
+            # hard
+            #self.Board = [ [1, 4, 5], [3, 0, 2], [6, 7, 8] ]
+            #self.X = 1
+            #self.Y = 1
+
+            assert ( self.Board[self.X][self.Y] == 0 )
+
+            if (self.isSolveable()):
+                break
+            else:
+                print("Board in NOT solveable state, re-initialize ...")
+
+        self.Heuristic = self.calculateHeuristic(heuristicType)
+        self.Score = self.Heuristic
 
     #=====================================================
-    def createChildrenBoards(self):
+    def createChildrenBoards(self, heuristicType : str) -> int:
         """ Creates the set of potential children Boards from the current Board """
         row = self.X
         col = self.Y
@@ -103,48 +168,58 @@ class BoardClass():
 
         newChildrenBoards = []
 
+        parentPathScore = self.Score - self.Heuristic
+        childPathScore = parentPathScore + 1
+
         # UP(NORTH): slide empty (0) space up
         if ( row != 0 ):
-            print("Try North ...")
             newBoard = self.copyCTOR()
             newBoard.Parent = self
             newBoard.Board[row-1][col], newBoard.Board[row][col] = newBoard.Board[row][col], newBoard.Board[row-1][col]
             newBoard.X = row-1
+            newBoard.Heuristic = newBoard.calculateHeuristic(heuristicType)
+            newBoard.Score = childPathScore + newBoard.Heuristic
             newChildrenBoards.append( newBoard )
 
         # RIGHT(EAST): slide empty (0) space to right
         if ( col != (self.N - 1) ):
-            print("Try East ...")
+            #print("Try East ...")
             newBoard = self.copyCTOR()
             newBoard.Parent = self
             newBoard.Board[row][col+1], newBoard.Board[row][col] = newBoard.Board[row][col], newBoard.Board[row][col+1]
             newBoard.Y = col+1
+            newBoard.Heuristic = newBoard.calculateHeuristic(heuristicType)
+            newBoard.Score = childPathScore + newBoard.Heuristic
             newChildrenBoards.append( newBoard )
 
 
         # DOWN(SOUTH): slide empty (0) space down
         if ( row != (self.N - 1) ):
-            print("Try South ...")
+            #print("Try South ...")
             newBoard = self.copyCTOR()
             newBoard.Parent = self
             newBoard.Board[row+1][col], newBoard.Board[row][col] = newBoard.Board[row][col], newBoard.Board[row+1][col]
             newBoard.X = row+1
+            newBoard.Heuristic = newBoard.calculateHeuristic(heuristicType)
+            newBoard.Score = childPathScore + newBoard.Heuristic
             newChildrenBoards.append( newBoard )
 
         # LEFT(WEST): slide empty (0) space to left
         if ( col != 0 ):
-            print("Try West ...")
+            #print("Try West ...")
             newBoard = self.copyCTOR()
             newBoard.Parent = self
             newBoard.Board[row][col-1], newBoard.Board[row][col] = newBoard.Board[row][col], newBoard.Board[row][col-1]
             newBoard.Y = col-1
+            newBoard.Heuristic = newBoard.calculateHeuristic(heuristicType)
+            newBoard.Score = childPathScore + newBoard.Heuristic
             newChildrenBoards.append( newBoard )
             
 
         return newChildrenBoards
 
     #=====================================================
-    def computeDistanceFromGoal(self):
+    def computeDistanceFromGoal(self) -> int:
         """Computes the Manhatten Distance from the Goal board,
         where Manhatten Distance = (sum of misplaced distances for all tiles)"""
 
@@ -163,12 +238,14 @@ class BoardClass():
 
         self.ManhattenDistance = sum
 
+        return sum
+
         #print self
         #print "Manhatten Distance: ", sum
         #junk = raw_input("Slowing Down (hit enter to continue) ....")
 
     #=====================================================
-    def __str__(self):
+    def __str__(self) -> None:
         """ Prints the current Board positions """
 
         print("-------------")
@@ -182,7 +259,7 @@ class BoardClass():
         return ""
 
     #=====================================================
-    def getHeuristic_MisplacedTiles(self, other):
+    def getHeuristic_MisplacedTiles(self, other) -> int:
        """ H = misplacedTiles """
        
        numberMisplaced = 0
@@ -197,23 +274,18 @@ class BoardClass():
        return (numberMisplaced)
 
     #=====================================================
-    def sameBoard(self, otherBoard):
+    def sameBoard(self, otherBoard) -> bool:
         """Check if two boards are exactly identical in tile placement;
         (note that this is different from metric of __eq__
         """
 
-        same = False  # assume the worst
 
         for row in range(0, BoardClass.N):
             for col in range(0, BoardClass.N):
-                if (self.Board[row][col] == otherBoard.Board[row][col]):
-                    same = True
-                else:
-                    same = False
-                    break
+                if (self.Board[row][col] != otherBoard.Board[row][col]):
+                    return False
 
-
-        return same
+        return True
     
 
     """ if you use a priority queue, you probably won't need to implement the
@@ -223,37 +295,32 @@ class BoardClass():
     """
 
     #=====================================================
-    def __eq__(self, other):
+    def __eq__(self, other) -> bool:
 
         same = False  # assume the worst
 
 
-        return (self.getHeuristic_MisplacedTiles()  == other.getHeuristic_MisplacedTiles())
+        return (self.Heuristic == other.Heuristic)
 
    #=====================================================
-    def __ne__(self, other):
+    def __ne__(self, other) -> bool:
 
         same = False  # assume the worst
 
 
-        return (self.getHeuristic_MisplacedTiles() != other.getHeuristic_MisplacedTiles())
+        return (self.Heuristic != other.Heuristic)
 
     #=====================================================
-    def __lt__(self, other):
+    def __lt__(self, other) -> bool:
 
         same = False  # assume the worst
 
-
-
-
-        return same
+        return (self.Heuristic < other.Heuristic)
 
     #=====================================================
-    def __le__(self, other):
+    def __le__(self, other) -> bool:
 
         same = False  # assume the worst
 
 
-
-
-        return same
+        return (self.Heuristic <= other.Heuristic)
